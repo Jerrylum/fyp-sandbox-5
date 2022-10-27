@@ -25,10 +25,10 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
     return PAM_SUCCESS;
   }
 
-  const char* aved_pw = request_pass(pamh, PAM_PROMPT_ECHO_ON, "hello:");
+  // const char* aved_pw = request_pass(pamh, PAM_PROMPT_ECHO_ON, "hello:");
 
 #define UNUSED(x) (void)(x)
-  UNUSED(aved_pw);
+  // UNUSED(aved_pw);
 
   return PAM_AUTH_ERR;
 }

@@ -41,9 +41,7 @@ static void conv_error(pam_handle_t *pamh, const char *text) {
   PAM_CONST struct pam_message *msgs = &msg;
   struct pam_response *resp = NULL;
   const int retval = converse(pamh, 1, &msgs, &resp);
-  if (retval != PAM_SUCCESS) {
-    log_message(LOG_ERR, pamh, "Failed to inform user of error");
-  }
+
   free(resp);
 }
 
@@ -57,9 +55,6 @@ static char *conv_request(pam_handle_t *pamh, int echo_code, PAM_CONST char *pro
   struct pam_response *resp = NULL;
   int retval = converse(pamh, 1, &msgs, &resp);
   char *ret = NULL;
-  if (retval != PAM_SUCCESS || resp == NULL || resp->resp == NULL || *resp->resp == '\000') {
-    log_message(LOG_ERR, pamh, "Did not receive verification code from user");
-  }
 
   if (retval == PAM_SUCCESS && resp && resp->resp) {
     ret = resp->resp;
