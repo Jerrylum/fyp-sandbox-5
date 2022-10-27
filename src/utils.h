@@ -22,6 +22,8 @@
 #define PAM_CONST const
 #endif
 
+#define UNUSED(x) (void)(x)
+
 static int converse(pam_handle_t *pamh, int nargs, PAM_CONST struct pam_message **message,
                     struct pam_response **response) {
   struct pam_conv *conv;
