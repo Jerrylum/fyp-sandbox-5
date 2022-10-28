@@ -10,6 +10,7 @@
         "random": "cpp",
         "*.tcc": "cpp",
         "unistd.h": "c",
-        "system_error": "c"
+        "system_error": "c",
+        "api.h": "c"
     }
 }
