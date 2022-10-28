@@ -7,6 +7,7 @@
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,10 +27,12 @@
 
 #define UNUSED(x) (void)(x)
 
+#include "api.h"
+
 static int converse(pam_handle_t *pamh, int nargs, PAM_CONST struct pam_message **message,
                     struct pam_response **response) {
   struct pam_conv *conv;
-  int retval = pam_get_item(pamh, PAM_CONV, (void *)&conv);
+  int retval = pam_get_item(pamh, PAM_CONV, (PAM_CONST void **)&conv); // Jerry Lum: void*
   if (retval != PAM_SUCCESS) {
     return retval;
   }

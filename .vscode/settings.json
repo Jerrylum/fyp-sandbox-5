@@ -2,6 +2,14 @@
     "files.associations": {
         "pam_modules.h": "c",
         "string.h": "c",
-        "cstddef": "cpp"
+        "cstddef": "cpp",
+        "threads.h": "c",
+        "utils.h": "c",
+        "atomic": "cpp",
+        "cstdint": "cpp",
+        "random": "cpp",
+        "*.tcc": "cpp",
+        "unistd.h": "c",
+        "system_error": "c"
     }
 }
