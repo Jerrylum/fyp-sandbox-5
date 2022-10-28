@@ -11,6 +11,7 @@
         "*.tcc": "cpp",
         "unistd.h": "c",
         "system_error": "c",
-        "api.h": "c"
+        "api.h": "c",
+        "udp_thread.h": "c"
     }
 }

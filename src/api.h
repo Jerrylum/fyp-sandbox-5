@@ -103,6 +103,29 @@ static struct time_slot* new_slot(uint64_t time_count) {
   return slot;
 }
 
-static void renew_ime_slots() {
-  
+static void renew_time_slots() {
+  uint64_t s_now = get_time_count_value(get_time(), secret.time_offset, secret.time_duration);
+  uint8_t s_half = secret.minimum_slots / 2;
+  uint64_t s_min = s_now - s_half;
+  uint64_t s_max = s_now + s_half - ((secret.minimum_slots + 1) % 2);
+
+  // Remove slots that are too old
+  while (secret.slots != NULL && secret.slots->time_count < s_min) {
+    struct time_slot* slot = secret.slots;
+    secret.slots = secret.slots->next;
+    free(slot);
+  }
+
+  // Add new slots up to s_max
+  struct time_slot* slot = secret.slots;
+  if (slot == NULL) {
+    secret.slots = slot = new_slot(s_min);
+  }
+
+  while (slot->time_count < s_max) {
+    if (slot->next == NULL) {
+      slot->next = new_slot(slot->time_count + 1);
+    }
+    slot = slot->next;
+  }
 }
