@@ -1,5 +1,6 @@
 #pragma once
 
+#include "aes.h"
 #include "sha3.h"
 #include "utils.h"
 
@@ -19,7 +20,7 @@ static uint64_t get_time() { return (unsigned long)time(NULL); }
  *
  * @return uint64_t
  */
-static uint64_t get_time_count_value(uint64_t time, uint64_t time_offset, uint64_t time_duration) {
+static uint64_t get_time_count_value(uint64_t time, uint64_t time_offset, uint8_t time_duration) {
   return (time + time_offset) / time_duration;
 }
 
@@ -56,6 +57,51 @@ static void get_packet_encryption_key(uint8_t* dst, uint8_t* key, uint64_t time_
   sha3_256(dst, buffer, 32 + 8);
 }
 
+/**
+ * @brief Encrypts the packet using AES-256-CBC
+ *
+ * @param dst The encrypted packet in the form of a 96 byte array
+ * @param packet_key The key to encrypt the packet with, must be 32 bytes
+ * @param iv The initialization vector, must be 16 bytes
+ * @param packet_buffer The packet to encrypt, must be 64 bytes
+ */
+static void encrypt_packet(uint8_t* dst, uint8_t* packet_key, uint8_t* iv, uint8_t* packet_buffer) {
+  struct AES_ctx ctx;
+  AES_init_ctx_iv(&ctx, packet_key, iv);
+
+  memcpy(dst, packet_buffer, 64);
+
+  sha3_256(dst + 64, packet_buffer, 64);
+
+  AES_CBC_encrypt_buffer(&ctx, dst, 96);
+}
+
+/**
+ * @brief Decrypts the packet using AES-256-CBC
+ *
+ * The first byte of the packet is the packet type, 255 if the packet is invalid
+ *
+ * @param dst The decrypted packet in the form of a 64 byte array
+ * @param packet_key The key to decrypt the packet with, must be 32 bytes
+ * @param iv The initialization vector, must be 16 bytes
+ * @param enc The packet to decrypt, must be 96 bytes
+ */
+static void decrypt_packet(uint8_t* dst, uint8_t* packet_key, uint8_t* iv, uint8_t* enc) {
+  struct AES_ctx ctx;
+  AES_init_ctx_iv(&ctx, packet_key, iv);
+
+  AES_CBC_decrypt_buffer(&ctx, enc, 96);
+
+  uint8_t hash[32];
+  sha3_256(hash, enc, 64);
+
+  if (memcmp(hash, enc + 64, 32) != 0) {
+    dst[0] = 255;
+  } else {
+    memcpy(dst, enc, 64);
+  }
+}
+
 struct time_slot {
   uint64_t time_count;  // or slot id
   uint8_t packet_key[32];
@@ -67,19 +113,48 @@ struct time_slot {
 static struct {
   uint8_t master_key[32];
   uint8_t master_iv[16];
-  uint64_t time_offset;  // The time offset in seconds
-  uint64_t time_duration;  // The length of time in seconds that the key is valid for
-  uint8_t minimum_slots;  // The minimum number of slots at any given time
-  struct time_slot* slots;
+  uint64_t time_offset;   // The time offset in seconds
+  uint8_t time_duration;  // The length of time in seconds that the key is valid for
+  uint8_t minimum_slots;  // The minimum number of slots at any given time, should be at least 1
+  struct {                // 10 codes in total
+    uint8_t code[5];      // 5 bytes, 10 HEX digits
+    uint8_t flag;         // 0 = not used, 1 = used
+  } backup_codes[10];
 } secret = {
-    .master_key = {},
+    .master_key = {0x12},
     .master_iv = {},
     .time_offset = 0,
-    .time_duration = 30,
+    .time_duration = 60,
     .minimum_slots = 3,
+    .backup_codes =
+        {
+            {.code = {}, .flag = 1},
+            {.code = {}, .flag = 1},
+            {.code = {}, .flag = 1},
+            {.code = {}, .flag = 1},
+            {.code = {}, .flag = 1},
+            {.code = {}, .flag = 1},
+            {.code = {}, .flag = 1},
+            {.code = {}, .flag = 1},
+            {.code = {}, .flag = 1},
+            {.code = {}, .flag = 1},
+        },
+};
+
+static struct {
+  uint64_t session_id;
+  struct time_slot* slots;
+
+} session_secret = {
+    .session_id = 0,
     .slots = NULL,
 };
 
+/**
+ * @brief Releases all the memory used by this time slot and all time slots after it
+ *
+ * @param slot The time slot to start from
+ */
 static void release_slots(struct time_slot* slot) {
   if (slot == NULL) {
     return;
@@ -89,6 +164,13 @@ static void release_slots(struct time_slot* slot) {
   free(slot);
 }
 
+/**
+ * @brief Allocates a new time slot
+ *
+ * @param time_count The time count value
+ *
+ * @return struct time_slot* The new time slot
+ */
 static struct time_slot* new_slot(uint64_t time_count) {
   struct time_slot* slot = (struct time_slot*)malloc(sizeof(struct time_slot));
   if (slot == NULL) {
@@ -103,26 +185,76 @@ static struct time_slot* new_slot(uint64_t time_count) {
   return slot;
 }
 
-static void renew_time_slots() {
-  uint64_t s_now = get_time_count_value(get_time(), secret.time_offset, secret.time_duration);
+/**
+ * Global access:
+ * @brief Gets the time slot from session_secret for the given time count value
+ * 
+ * @param time_count The time count value
+ * 
+ * @return struct time_slot* The time slot, or NULL if it doesn't exist
+ */
+static struct time_slot* get_slot(uint64_t time_count) {
+  struct time_slot* slot = session_secret.slots;
+
+  while (slot != NULL) {
+    if (slot->time_count == time_count) {
+      return slot;
+    }
+
+    slot = slot->next;
+  }
+
+  return NULL;
+}
+
+/**
+ * Global access:
+ * @brief Gets the time slot from session_secret for the given frame header
+ * 
+ * @param frame_header The frame header, must be 32 bytes
+ * 
+ * @return struct time_slot* The time slot, or NULL if it doesn't exist
+ */
+static struct time_slot* find_slot_by_frame_header(uint8_t* frame_header) {
+  struct time_slot* slot = session_secret.slots;
+
+  while (slot != NULL) {
+    if (memcmp(slot->frame_header, frame_header, 32) == 0) {
+      return slot;
+    }
+
+    slot = slot->next;
+  }
+
+  return NULL;
+}
+
+/**
+ * Global access:
+ * @brief Renew the session_secret.slots list by the given time count value
+ * 
+ * @param time_count The current time count value
+ */
+static void renew_time_slots(uint64_t time_count_now) {
   uint8_t s_half = secret.minimum_slots / 2;
-  uint64_t s_min = s_now - s_half;
-  uint64_t s_max = s_now + s_half - ((secret.minimum_slots + 1) % 2);
+  uint64_t s_min = time_count_now - s_half;
+  uint64_t s_max = time_count_now + s_half - ((secret.minimum_slots + 1) % 2);
 
   // Remove slots that are too old
-  while (secret.slots != NULL && secret.slots->time_count < s_min) {
-    struct time_slot* slot = secret.slots;
-    secret.slots = secret.slots->next;
+  while (session_secret.slots != NULL && session_secret.slots->time_count != s_min) {
+    struct time_slot* slot = session_secret.slots;
+    session_secret.slots = session_secret.slots->next;
     free(slot);
   }
 
   // Add new slots up to s_max
-  struct time_slot* slot = secret.slots;
+  struct time_slot* slot = session_secret.slots;
   if (slot == NULL) {
-    secret.slots = slot = new_slot(s_min);
+    session_secret.slots = slot = new_slot(s_min);
   }
 
-  while (slot->time_count < s_max) {
+  // Add new slots up to s_max, s_half must be at least 1
+  while (slot->time_count != s_max && s_half != 0) {
     if (slot->next == NULL) {
       slot->next = new_slot(slot->time_count + 1);
     }

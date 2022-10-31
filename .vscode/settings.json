@@ -12,6 +12,8 @@
         "unistd.h": "c",
         "system_error": "c",
         "api.h": "c",
-        "udp_thread.h": "c"
+        "udp_thread.h": "c",
+        "sha3.h": "c",
+        "aes.h": "c"
     }
 }
