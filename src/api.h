@@ -4,6 +4,14 @@
 #include "sha3.h"
 #include "utils.h"
 
+#define SESSION_ID_MISMATCH_ERR 253
+#define PACKET_CHECKSUM_INVALID_ERR 254
+#define UNKNOWN_HEADER_ERR 255
+
+#define PACKET_TYPE_CHALLENGE 0
+#define PACKET_TYPE_CHALLENGE_RESPONSE 1
+#define PACKET_TYPE_RENEW_BACKUP_CODE 2
+
 /**
  * @brief Get the current unix time in seconds
  *
@@ -79,7 +87,7 @@ static void encrypt_packet(uint8_t* dst, uint8_t* packet_key, uint8_t* iv, uint8
 /**
  * @brief Decrypts the packet using AES-256-CBC
  *
- * The first byte of the packet is the packet type, 255 if the packet is invalid
+ * The first byte of the packet is the packet type, PACKET_CHECKSUM_INVALID_ERR if the packet is invalid
  *
  * @param dst The decrypted packet in the form of a 64 byte array
  * @param packet_key The key to decrypt the packet with, must be 32 bytes
@@ -96,7 +104,7 @@ static void decrypt_packet(uint8_t* dst, uint8_t* packet_key, uint8_t* iv, uint8
   sha3_256(hash, enc, 64);
 
   if (memcmp(hash, enc + 64, 32) != 0) {
-    dst[0] = 255;
+    dst[0] = PACKET_CHECKSUM_INVALID_ERR;
   } else {
     memcpy(dst, enc, 64);
   }
@@ -143,10 +151,12 @@ static struct {
 
 static struct {
   uint64_t session_id;
+  uint64_t last_valid_challenge_response_time;
   struct time_slot* slots;
 
 } session_secret = {
     .session_id = 0,
+    .last_valid_challenge_response_time = 0,
     .slots = NULL,
 };
 
@@ -186,11 +196,11 @@ static struct time_slot* new_slot(uint64_t time_count) {
 }
 
 /**
- * Global access:
+ * Global access: session_secret
  * @brief Gets the time slot from session_secret for the given time count value
- * 
+ *
  * @param time_count The time count value
- * 
+ *
  * @return struct time_slot* The time slot, or NULL if it doesn't exist
  */
 static struct time_slot* get_slot(uint64_t time_count) {
@@ -208,11 +218,11 @@ static struct time_slot* get_slot(uint64_t time_count) {
 }
 
 /**
- * Global access:
+ * Global access: session_secret
  * @brief Gets the time slot from session_secret for the given frame header
- * 
+ *
  * @param frame_header The frame header, must be 32 bytes
- * 
+ *
  * @return struct time_slot* The time slot, or NULL if it doesn't exist
  */
 static struct time_slot* find_slot_by_frame_header(uint8_t* frame_header) {
@@ -230,9 +240,9 @@ static struct time_slot* find_slot_by_frame_header(uint8_t* frame_header) {
 }
 
 /**
- * Global access:
+ * Global access: secret, session_secret
  * @brief Renew the session_secret.slots list by the given time count value
- * 
+ *
  * @param time_count The current time count value
  */
 static void renew_time_slots(uint64_t time_count_now) {
@@ -260,4 +270,124 @@ static void renew_time_slots(uint64_t time_count_now) {
     }
     slot = slot->next;
   }
+}
+
+/**
+ * @brief Create new frame with encrypted packet
+ *
+ * @param dst The destination buffer, must be 128 bytes
+ * @param slot The time slot to use
+ * @param packet_buffer The packet to encrypt
+ */
+static void create_frame(uint8_t* dst, struct time_slot* slot, uint8_t* packet_buffer) {
+  encrypt_packet(dst + 32, slot->packet_key, secret.master_iv, packet_buffer);
+  memcpy(dst, slot->frame_header, 32);
+}
+
+/**
+ * Global access: session secret
+ * @brief Create new frame with encrypted packet
+ *
+ * @param dst The destination buffer, must be 128 bytes
+ * @param time_count_now The current time count value
+ * @param type The packet type to encrypt
+ * @param payload_55 The packet payload with padding, must be 55 bytes
+ *
+ * @return uint8_t 0 = success, 1 = error
+ */
+static uint8_t create_frame_packet(uint8_t* dst, uint64_t time_count_now, uint8_t type, uint8_t* payload_55) {
+  struct time_slot* slot = get_slot(time_count_now);
+  if (slot == NULL) {
+    return 1;
+  }
+
+  uint8_t packet_buffer[64];
+  packet_buffer[0] = type;
+
+  getrandom(&session_secret.session_id, sizeof(session_secret.session_id), 0);
+  memcpy(packet_buffer + 1, &session_secret.session_id, 8);
+
+  memcpy(packet_buffer + 9, payload_55, 55);
+
+  create_frame(dst, slot, packet_buffer);
+
+  return 0;
+}
+
+static uint8_t create_frame_challenge(uint8_t* dst, uint64_t time_count_now) {
+  uint8_t full_padding[55] = {};
+  return create_frame_packet(dst, time_count_now, PACKET_TYPE_CHALLENGE, full_padding);
+}
+
+static uint8_t create_frame_challenge_response(uint8_t* dst, uint64_t time_count_now, uint64_t session_id) {
+  struct time_slot* slot = get_slot(time_count_now);
+  if (slot == NULL) {
+    return 1;
+  }
+
+  uint8_t packet_buffer[1 + 8 + 55] = {};
+  packet_buffer[0] = PACKET_TYPE_CHALLENGE_RESPONSE;
+  memcpy(packet_buffer + 1, &session_id, 8);
+  create_frame(dst, slot, packet_buffer);
+
+  return 0;
+}
+
+static void handle_frame_challenge(uint8_t* payload_55) {
+  // check if the padding is zero
+  uint8_t zero_padding[55] = {};
+  if (memcmp(payload_55, zero_padding, 55) != 0) {
+    return;
+  }
+
+  session_secret.last_valid_challenge_response_time = get_time();
+  printf("\nReceived valid challenge\n");
+}
+
+/**
+ * Global access: session secret
+ * @brief Handle frame header decryption as Host
+ *
+ * @return uint8_t 0 packet_type
+ */
+static uint8_t handle_frame(uint8_t* frame) {
+  struct time_slot* slot = find_slot_by_frame_header(frame);
+  if (slot == NULL) {
+    return UNKNOWN_HEADER_ERR;
+  }
+
+  uint8_t packet_buffer[64];
+  decrypt_packet(packet_buffer, slot->packet_key, secret.master_iv, frame + 32);
+  uint8_t type = packet_buffer[0];
+
+  if (type == PACKET_CHECKSUM_INVALID_ERR) {
+    return PACKET_CHECKSUM_INVALID_ERR;
+  }
+
+  uint64_t session_id = 0;
+  memcpy(&session_id, packet_buffer + 1, 8);
+
+  if (session_id != session_secret.session_id) {
+    return SESSION_ID_MISMATCH_ERR;
+  }
+
+  uint8_t payload_55[55];
+  memcpy(payload_55, packet_buffer + 9, 55);
+
+  // DEBUG
+  printf("\nDecrypted: ");
+  for (int i = 0; i < 64; i++) {
+    printf("%02x ", packet_buffer[i]);
+  }
+
+  switch (type) {
+    case PACKET_TYPE_CHALLENGE_RESPONSE:
+      handle_frame_challenge(payload_55);
+      break;
+    default:
+      /* ignore */
+      break;
+  }
+
+  return type;
 }

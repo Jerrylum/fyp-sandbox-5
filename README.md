@@ -28,16 +28,16 @@ https://github.com/google/google-authenticator-libpam Apache License 2.0
 
 ### Packet structure
 ```
-#### 0 - Challenge
-Session ID(8)
+#### 0 - H2D Challenge
+(nothing)
 
 
-#### 1 - Challenge Response
-Session ID(8)
+#### 1 - D2H Challenge Response
+(nothing)
 
 
-#### 2 - Renew Backup Code
-Session ID(8) | Backup Code(5) * 10
+#### 2 - D2H Renew Backup Code
+Backup Code(5) * 10
 
 
 #### 254 - Session ID Error Code
@@ -47,4 +47,5 @@ Session ID(8) | Backup Code(5) * 10
 
 ```
 
+(SHOULD I?)
 Session ID works as a counter, and is incremented by 1 every time a new session is started. It is used to identify the session, and to prevent replay attacks.

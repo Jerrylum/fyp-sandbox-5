@@ -14,6 +14,8 @@
         "api.h": "c",
         "udp_thread.h": "c",
         "sha3.h": "c",
-        "aes.h": "c"
+        "aes.h": "c",
+        "random.h": "c",
+        "socket.h": "c"
     }
 }
