@@ -10,6 +10,20 @@ int main(int argc, char** argv) {
     printf("%02x ", secret.master_key[i]);
   }
 
+  // using capital letters are fine
+  struct backup_code codes[10] = {
+    {.code = "A0B6123456"},
+    {.code = "A1B6123456"},
+    {.code = "A2B6123456"},
+    {.code = "A3B6123456"},
+    {.code = "A4B6123456"},
+    {.code = "A5B6123456"},
+    {.code = "A6B6123456"},
+    {.code = "A7B6123456"},
+    {.code = "A8B6123456"},
+    {.code = "A9B6123456"},
+  };
+
   ///////////////////////
 
   uint8_t frame[128];
@@ -19,13 +33,13 @@ int main(int argc, char** argv) {
   renew_time_slots(time_count_now);
   ///////////////////////
 
-  printf("\nfeedback: %d\n", create_frame_challenge(frame, time_count_now));
-
-  ///////////////////////
-  create_frame_challenge_response(frame, time_count_now, session_secret.session_id);
-  ///////////////////////
+  printf("\nfeedback: %d\n", create_frame_renew_backup_code(frame, time_count_now, codes));
 
   handle_frame(frame);
+
+  for (int i = 0; i < 10; i++) {
+    printf("code %d: %s\n", i, secret.backup_codes[i].code);
+  }
 
   return 0;
 }
@@ -39,6 +53,68 @@ int main(int argc, char** argv) {
 //   for (int i = 0; i < 32; i++) {
 //     printf("%02x ", secret.master_key[i]);
 //   }
+
+//   // using capital letters are fine
+//   struct backup_code codes[10] = {
+//     {.code = "A0B6123456"},
+//     {.code = "A1B6123456"},
+//     {.code = "A2B6123456"},
+//     {.code = "A3B6123456"},
+//     {.code = "A4B6123456"},
+//     {.code = "A5B6123456"},
+//     {.code = "A6B6123456"},
+//     {.code = "A7B6123456"},
+//     {.code = "A8B6123456"},
+//     {.code = "A9B6123456"},
+//   };
+
+//   ///////////////////////
+
+//   uint8_t frame[128];
+//   uint64_t time_count_now = get_time_count_value(get_time(), secret.time_offset, secret.time_duration);
+
+//   ///////////////////////
+//   renew_time_slots(time_count_now);
+//   ///////////////////////
+
+//   printf("\nfeedback: %d\n", create_frame_renew_backup_code(frame, time_count_now, codes));
+
+//   handle_frame(frame);
+
+//   for (int i = 0; i < 10; i++) {
+//     printf("code %d: %s\n", i, secret.backup_codes[i].code);
+//   }
+
+//   return 0;
+// }
+
+// int main(int argc, char** argv) {
+//   // hello world
+//   printf("Hello world\n");
+
+//   ///////////////////////
+
+//   uint8_t frame[128];
+//   uint64_t time_count_now = get_time_count_value(get_time(), secret.time_offset, secret.time_duration);
+
+//   ///////////////////////
+//   renew_time_slots(time_count_now);
+//   ///////////////////////
+
+//   printf("\nfeedback: %d\n", create_frame_challenge(frame, time_count_now));
+
+//   ///////////////////////
+//   create_frame_challenge_response(frame, time_count_now, session_secret.session_id);
+//   ///////////////////////
+
+//   handle_frame(frame);
+
+//   return 0;
+// }
+
+// int main(int argc, char** argv) {
+//   // hello world
+//   printf("Hello world\n");
 
 //   ///////////////////////
 
