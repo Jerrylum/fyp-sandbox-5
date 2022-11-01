@@ -1,5 +1,6 @@
+#include "header.h"
+#include "api.h"
 #include "udp_thread.h"
-#include "utils.h"
 
 /* expected hook */
 PAM_EXTERN int pam_sm_setcred(pam_handle_t *pamh, int flags, int argc, const char **argv) { return PAM_SUCCESS; }

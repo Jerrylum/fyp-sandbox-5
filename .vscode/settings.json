@@ -16,6 +16,13 @@
         "sha3.h": "c",
         "aes.h": "c",
         "random.h": "c",
-        "socket.h": "c"
+        "socket.h": "c",
+        "errno.h": "c",
+        "time.h": "c",
+        "header.h": "c",
+        "stdio.h": "c",
+        "pthread.h": "c",
+        "stdarg.h": "c",
+        "essentials.h": "c"
     }
 }
