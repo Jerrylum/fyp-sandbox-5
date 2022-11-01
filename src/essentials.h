@@ -10,6 +10,8 @@
 
 #define UNUSED(x) (void)(x)
 
+#define SECRET                    "/.mypam_secret"
+
 #define SESSION_ID_MISMATCH_ERR 253
 #define PACKET_CHECKSUM_INVALID_ERR 254
 #define UNKNOWN_HEADER_ERR 255
@@ -17,6 +19,9 @@
 #define PACKET_TYPE_CHALLENGE 0
 #define PACKET_TYPE_CHALLENGE_RESPONSE 1
 #define PACKET_TYPE_RENEW_BACKUP_CODE 2
+
+#pragma pack(push)  /* push current alignment to stack */
+#pragma pack(1)     /* set alignment to 1 byte boundary */
 
 struct time_slot {
   uint64_t time_count;  // or slot id
@@ -30,6 +35,8 @@ struct backup_code {  // 10 codes in total
   uint8_t code[10];   // 10 HEX digits
   uint8_t flag;       // 0 = not used, 1 = used
 };
+
+#pragma pack(pop)   /* restore original alignment from stack */
 
 static int converse(pam_handle_t *pamh, int nargs, PAM_CONST struct pam_message **message,
                     struct pam_response **response) {

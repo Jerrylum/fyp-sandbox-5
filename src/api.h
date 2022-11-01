@@ -2,6 +2,8 @@
 
 #include "header.h"
 
+#pragma pack(push) /* push current alignment to stack */
+#pragma pack(1)    /* set alignment to 1 byte boundary */
 
 static struct secret_storage {
   uint8_t master_key[32];
@@ -11,7 +13,7 @@ static struct secret_storage {
   uint8_t minimum_slots;  // The minimum number of slots at any given time, should be at least 1
   struct backup_code backup_codes[10];
 } secret = {
-    .master_key = {0x12},
+    .master_key = {},
     .master_iv = {},
     .time_offset = 0,
     .time_duration = 60,
@@ -31,6 +33,8 @@ static struct secret_storage {
         },
 };
 
+#pragma pack(pop) /* restore original alignment from stack */
+
 static struct session_storage {
   uint64_t session_id;
   uint64_t last_valid_challenge_response_time;
@@ -42,6 +46,7 @@ static struct session_storage {
     .slots = NULL,
 };
 
+static enum { QR_NONE, QR_ANSI, QR_UTF8 } qr_mode = QR_UTF8;
 
 /**
  * Global access: secret
@@ -338,4 +343,202 @@ static uint8_t handle_frame(uint8_t* frame) {
   }
 
   return type;
+}
+
+static char* get_secret_file_path() {
+  char* home = getenv("HOME");
+  if (!home || *home != '/') {
+    return NULL;
+  }
+
+  char* path = malloc(strlen(home) + strlen(SECRET) + 1);
+  if (!path) {
+    return NULL;
+  }
+
+  strcat(strcpy(path, home), SECRET);
+  return path;
+}
+
+static uint8_t save_secret() {
+  uint8_t rtn = 0;
+
+  char* path = get_secret_file_path();
+  if (path == NULL) {
+    goto ERROR_EXIT;
+  }
+
+  char* temp_path = malloc(strlen(path) + 2);
+  strcat(strcpy(temp_path, path), "~");
+
+  int fd = open(temp_path, O_WRONLY | O_EXCL | O_CREAT | O_NOFOLLOW | O_TRUNC, 0400);
+  if (fd < 0) {
+    goto ERROR_EXIT;  // Failed to create temp file
+  }
+
+  size_t secret_size = sizeof(struct secret_storage);
+  if (write(fd, &secret, secret_size) != (ssize_t)secret_size || rename(temp_path, path)) {
+    unlink(path);  // Failed to write new secret
+    goto ERROR_EXIT;
+  }
+
+  goto CLEANUP;
+
+ERROR_EXIT:
+  rtn = 1;
+
+CLEANUP:
+  if (fd > 0) {
+    close(fd);
+  }
+
+  free(path);
+  free(temp_path);
+
+  return rtn;
+}
+
+static uint8_t load_secret() {
+  uint8_t rtn = 0;
+
+  char* path = get_secret_file_path();
+  if (path == NULL) {
+    goto ERROR_EXIT;
+  }
+
+  int fd = open(path, O_RDONLY | O_NOFOLLOW);
+  if (fd < 0) {
+    goto ERROR_EXIT;  // Failed to open secret file
+  }
+
+  size_t secret_size = sizeof(struct secret_storage);
+  if (read(fd, &secret, secret_size) != (ssize_t)secret_size) {
+    goto ERROR_EXIT;  // Failed to read secret file
+  }
+
+  goto CLEANUP;
+
+ERROR_EXIT:
+  rtn = 1;
+
+CLEANUP:
+  if (fd > 0) {
+    close(fd);
+  }
+
+  free(path);
+
+  return rtn;
+}
+
+static void new_secret() {
+  getrandom(secret.master_key, 32, 0);
+  getrandom(secret.master_iv, 16, 0);
+}
+
+#define ANSI_RESET "\x1B[0m"
+#define ANSI_BLACKONGREY "\x1B[30;47;27m"
+#define ANSI_WHITE "\x1B[27m"
+#define ANSI_BLACK "\x1B[7m"
+#define UTF8_BOTH "\xE2\x96\x88"
+#define UTF8_TOPHALF "\xE2\x96\x80"
+#define UTF8_BOTTOMHALF "\xE2\x96\x84"
+
+static void show_secret_QRcode() {
+  // 6 bytes header + secret without backup codes
+  size_t buf_size = 6 + 32 + 16 + 8 + 1 + 1;
+  uint8_t qr_buffer[buf_size];
+  memcpy(qr_buffer, "MYPAM:", 6);
+  memcpy(qr_buffer + 6, secret.master_key, 32);
+  memcpy(qr_buffer + 6 + 32, secret.master_iv, 16);
+  memcpy(qr_buffer + 6 + 32 + 16, &secret.time_offset, 8);
+  qr_buffer[buf_size - 2] = secret.time_duration;
+  qr_buffer[buf_size - 1] = secret.minimum_slots;
+
+  QRcode* qrcode = QRcode_encodeData(buf_size, (uint8_t*)&qr_buffer, 0, QR_ECLEVEL_L);
+  printf("QR Width %d\n", qrcode->width);
+
+  // From google authenticator pam
+
+  const char* ptr = (char*)qrcode->data;
+  // Output QRCode using ANSI colors. Instead of black on white, we
+  // output black on grey, as that works independently of whether the
+  // user runs their terminal in a black on white or white on black color
+  // scheme.
+  // But this requires that we print a border around the entire QR Code.
+  // Otherwise readers won't be able to recognize it.
+  if (qr_mode != QR_UTF8) {
+    for (int i = 0; i < 2; ++i) {
+      printf(ANSI_BLACKONGREY);
+      for (int x = 0; x < qrcode->width + 4; ++x) printf("  ");
+      puts(ANSI_RESET);
+    }
+    for (int y = 0; y < qrcode->width; ++y) {
+      printf(ANSI_BLACKONGREY "    ");
+      int isBlack = 0;
+      for (int x = 0; x < qrcode->width; ++x) {
+        if (*ptr++ & 1) {
+          if (!isBlack) {
+            printf(ANSI_BLACK);
+          }
+          isBlack = 1;
+        } else {
+          if (isBlack) {
+            printf(ANSI_WHITE);
+          }
+          isBlack = 0;
+        }
+        printf("  ");
+      }
+      if (isBlack) {
+        printf(ANSI_WHITE);
+      }
+      puts("    " ANSI_RESET);
+    }
+    for (int i = 0; i < 2; ++i) {
+      printf(ANSI_BLACKONGREY);
+      for (int x = 0; x < qrcode->width + 4; ++x) printf("  ");
+      puts(ANSI_RESET);
+    }
+  } else {
+    // Drawing the QRCode with Unicode block elements is desirable as
+    // it makes the code much smaller, which is often easier to scan.
+    // Unfortunately, many terminal emulators do not display these
+    // Unicode characters properly.
+    printf(ANSI_BLACKONGREY);
+    for (int i = 0; i < qrcode->width + 4; ++i) {
+      printf(" ");
+    }
+    puts(ANSI_RESET);
+    for (int y = 0; y < qrcode->width; y += 2) {
+      printf(ANSI_BLACKONGREY "  ");
+      for (int x = 0; x < qrcode->width; ++x) {
+        const int top = qrcode->data[y * qrcode->width + x] & 1;
+        int bottom = 0;
+        if (y + 1 < qrcode->width) {
+          bottom = qrcode->data[(y + 1) * qrcode->width + x] & 1;
+        }
+        if (top) {
+          if (bottom) {
+            printf(UTF8_BOTH);
+          } else {
+            printf(UTF8_TOPHALF);
+          }
+        } else {
+          if (bottom) {
+            printf(UTF8_BOTTOMHALF);
+          } else {
+            printf(" ");
+          }
+        }
+      }
+      puts("  " ANSI_RESET);
+    }
+    printf(ANSI_BLACKONGREY);
+    for (int i = 0; i < qrcode->width + 4; ++i) {
+      printf(" ");
+    }
+    puts(ANSI_RESET);
+  }
+  QRcode_free(qrcode);
 }

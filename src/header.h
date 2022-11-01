@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <syslog.h>
+#include <qrencode.h>
 #include <time.h>
 #include <unistd.h>
 

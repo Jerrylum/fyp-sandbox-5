@@ -9,6 +9,12 @@ The test application tests auth and account functionality (although account isn'
 	auth sufficient mypam.so
 	account sufficient mypam.so
 
+## Install
+
+```
+sudo apt-get install libqrencode-dev
+````
+
 ## License
 
 https://github.com/beatgammit/simple-pam MIT License
