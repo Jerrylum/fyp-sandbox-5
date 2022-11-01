@@ -437,12 +437,12 @@ static void new_secret() {
 }
 
 #define ANSI_RESET "\x1B[0m"
-#define ANSI_BLACKONGREY "\x1B[30;47;27m"
+#define ANSI_BLACK_ON_GREY "\x1B[30;47;27m"
 #define ANSI_WHITE "\x1B[27m"
 #define ANSI_BLACK "\x1B[7m"
 #define UTF8_BOTH "\xE2\x96\x88"
-#define UTF8_TOPHALF "\xE2\x96\x80"
-#define UTF8_BOTTOMHALF "\xE2\x96\x84"
+#define UTF8_TOP_HALF "\xE2\x96\x80"
+#define UTF8_BOTTOM_HALF "\xE2\x96\x84"
 
 static void show_secret_QRcode() {
   // 6 bytes header + secret without backup codes
@@ -456,25 +456,29 @@ static void show_secret_QRcode() {
   qr_buffer[buf_size - 1] = secret.minimum_slots;
 
   QRcode* qrcode = QRcode_encodeData(buf_size, (uint8_t*)&qr_buffer, 0, QR_ECLEVEL_L);
-  printf("QR Width %d\n", qrcode->width);
 
-  // From google authenticator pam
+#define PRINT_BORDER(c)                         \
+  printf(ANSI_BLACK_ON_GREY);                     \
+  for (int i = 0; i < qrcode->width + 4; i++) { \
+    printf(c);                                  \
+  }                                             \
+  puts(ANSI_RESET);
 
-  const char* ptr = (char*)qrcode->data;
-  // Output QRCode using ANSI colors. Instead of black on white, we
-  // output black on grey, as that works independently of whether the
-  // user runs their terminal in a black on white or white on black color
-  // scheme.
-  // But this requires that we print a border around the entire QR Code.
-  // Otherwise readers won't be able to recognize it.
-  if (qr_mode != QR_UTF8) {
-    for (int i = 0; i < 2; ++i) {
-      printf(ANSI_BLACKONGREY);
-      for (int x = 0; x < qrcode->width + 4; ++x) printf("  ");
-      puts(ANSI_RESET);
-    }
+  // From google authenticator pam with some modifications
+
+  if (qr_mode == QR_ANSI) {
+    // Output QRCode using ANSI colors. Instead of black on white, we
+    // output black on grey, as that works independently of whether the
+    // user runs their terminal in a black on white or white on black color
+    // scheme.
+    // But this requires that we print a border around the entire QR Code.
+    // Otherwise readers won't be able to recognize it.
+    PRINT_BORDER("  ");
+    PRINT_BORDER("  ");
+
+    const char* ptr = (char*)qrcode->data;
     for (int y = 0; y < qrcode->width; ++y) {
-      printf(ANSI_BLACKONGREY "    ");
+      printf(ANSI_BLACK_ON_GREY "    ");
       int isBlack = 0;
       for (int x = 0; x < qrcode->width; ++x) {
         if (*ptr++ & 1) {
@@ -495,23 +499,18 @@ static void show_secret_QRcode() {
       }
       puts("    " ANSI_RESET);
     }
-    for (int i = 0; i < 2; ++i) {
-      printf(ANSI_BLACKONGREY);
-      for (int x = 0; x < qrcode->width + 4; ++x) printf("  ");
-      puts(ANSI_RESET);
-    }
-  } else {
+
+    PRINT_BORDER("  ");
+    PRINT_BORDER("  ");
+  } else if (qr_mode == QR_UTF8) {
     // Drawing the QRCode with Unicode block elements is desirable as
     // it makes the code much smaller, which is often easier to scan.
     // Unfortunately, many terminal emulators do not display these
     // Unicode characters properly.
-    printf(ANSI_BLACKONGREY);
-    for (int i = 0; i < qrcode->width + 4; ++i) {
-      printf(" ");
-    }
-    puts(ANSI_RESET);
+    PRINT_BORDER(" ");
+  
     for (int y = 0; y < qrcode->width; y += 2) {
-      printf(ANSI_BLACKONGREY "  ");
+      printf(ANSI_BLACK_ON_GREY "  ");
       for (int x = 0; x < qrcode->width; ++x) {
         const int top = qrcode->data[y * qrcode->width + x] & 1;
         int bottom = 0;
@@ -519,26 +518,19 @@ static void show_secret_QRcode() {
           bottom = qrcode->data[(y + 1) * qrcode->width + x] & 1;
         }
         if (top) {
-          if (bottom) {
-            printf(UTF8_BOTH);
-          } else {
-            printf(UTF8_TOPHALF);
-          }
+          printf(bottom ? UTF8_BOTH : UTF8_TOP_HALF);
         } else {
-          if (bottom) {
-            printf(UTF8_BOTTOMHALF);
-          } else {
-            printf(" ");
-          }
+          printf(bottom ? UTF8_BOTTOM_HALF : " ");
         }
       }
       puts("  " ANSI_RESET);
     }
-    printf(ANSI_BLACKONGREY);
-    for (int i = 0; i < qrcode->width + 4; ++i) {
-      printf(" ");
-    }
-    puts(ANSI_RESET);
+  
+    PRINT_BORDER(" ");
+  } else {
+    // TODO
   }
   QRcode_free(qrcode);
+
+#undef PRINT_BORDER
 }
