@@ -26,10 +26,10 @@ https://github.com/google/google-authenticator-libpam Apache License 2.0
 
 ### Frame structure
 ```
-|Frame(128)------------------------------------------------------------------------|
-|Header(32)|Encrypted Packet(96)---------------------------------------------------|
-           |Packet Buffer(64)---------------------------------------------|Hash(32)|
-           |Packet Type(1)|Session Type(8)|Packet Payload(55-n)|Padding(n)|
+|Frame(128)----------------------------------------------------------------------|
+|Header(32)|Encrypted Packet(96)-------------------------------------------------|
+           |Packet Buffer(64)-------------------------------------------|Hash(32)|
+           |Packet Type(1)|Session ID(8)|Packet Payload(55-n)|Padding(n)|
 ```
 
 ### Packet structure
