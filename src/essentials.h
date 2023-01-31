@@ -10,7 +10,7 @@
 
 #define UNUSED(x) (void)(x)
 
-#define SECRET                    "/.mypam_secret"
+#define SECRET "/.mypam_secret"
 
 #define SESSION_ID_MISMATCH_ERR 253
 #define PACKET_CHECKSUM_INVALID_ERR 254
@@ -20,8 +20,8 @@
 #define PACKET_TYPE_CHALLENGE_RESPONSE 1
 #define PACKET_TYPE_RENEW_BACKUP_CODE 2
 
-#pragma pack(push)  /* push current alignment to stack */
-#pragma pack(1)     /* set alignment to 1 byte boundary */
+#pragma pack(push) /* push current alignment to stack */
+#pragma pack(1)    /* set alignment to 1 byte boundary */
 
 struct time_slot {
   uint64_t time_count;  // or slot id
@@ -36,12 +36,12 @@ struct backup_code {  // 10 codes in total
   uint8_t flag;       // 0 = not used, 1 = used
 };
 
-#pragma pack(pop)   /* restore original alignment from stack */
+#pragma pack(pop) /* restore original alignment from stack */
 
-static int converse(pam_handle_t *pamh, int nargs, PAM_CONST struct pam_message **message,
-                    struct pam_response **response) {
-  struct pam_conv *conv;
-  int retval = pam_get_item(pamh, PAM_CONV, (PAM_CONST void **)&conv); // Jerry Lum: void*
+static int converse(pam_handle_t* pamh, int nargs, PAM_CONST struct pam_message** message,
+                    struct pam_response** response) {
+  struct pam_conv* conv;
+  int retval = pam_get_item(pamh, PAM_CONV, (PAM_CONST void**)&conv);  // Jerry Lum: void*
   if (retval != PAM_SUCCESS) {
     return retval;
   }
@@ -49,28 +49,28 @@ static int converse(pam_handle_t *pamh, int nargs, PAM_CONST struct pam_message 
 }
 
 // Show error message to the user.
-static void conv_error(pam_handle_t *pamh, const char *text) {
+static void conv_error(pam_handle_t* pamh, const char* text) {
   PAM_CONST struct pam_message msg = {
       .msg_style = PAM_ERROR_MSG,
       .msg = text,
   };
-  PAM_CONST struct pam_message *msgs = &msg;
-  struct pam_response *resp = NULL;
+  PAM_CONST struct pam_message* msgs = &msg;
+  struct pam_response* resp = NULL;
   const int retval = converse(pamh, 1, &msgs, &resp);
 
   free(resp);
 }
 
-static char *conv_request(pam_handle_t *pamh, int echo_code, PAM_CONST char *prompt) {
+static char* conv_request(pam_handle_t* pamh, int echo_code, PAM_CONST char* prompt) {
   // Query user for verification code
   PAM_CONST struct pam_message msg = {
       .msg_style = echo_code,
       .msg = prompt,
   };
-  PAM_CONST struct pam_message *msgs = &msg;
-  struct pam_response *resp = NULL;
+  PAM_CONST struct pam_message* msgs = &msg;
+  struct pam_response* resp = NULL;
   int retval = converse(pamh, 1, &msgs, &resp);
-  char *ret = NULL;
+  char* ret = NULL;
 
   if (retval == PAM_SUCCESS && resp && resp->resp) {
     ret = resp->resp;

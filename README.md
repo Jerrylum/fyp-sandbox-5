@@ -15,6 +15,16 @@ The test application tests auth and account functionality (although account isn'
 sudo apt-get install libqrencode-dev
 ````
 
+## Test
+
+```
+mkdir build && cd build && cmake .. && make
+
+cmake --build build; ./build/mysandbox
+
+
+```
+
 ## License
 
 https://github.com/beatgammit/simple-pam MIT License

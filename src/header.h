@@ -2,11 +2,14 @@
 
 // Include system libraries
 
+#include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <linux/in.h>
 #include <pthread.h>
 #include <pwd.h>
+#include <qrencode.h>
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
 #include <stdarg.h>
@@ -19,7 +22,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <syslog.h>
-#include <qrencode.h>
 #include <time.h>
 #include <unistd.h>
 

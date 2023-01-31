@@ -436,6 +436,55 @@ static void new_secret() {
   getrandom(secret.master_iv, 16, 0);
 }
 
+#define UDP_TO_HOST_PORT 25001
+#define UDP_TO_DEVICE_PORT 25002
+
+static pthread_t udp_thread;
+static int udp_to_host_fd = -1;
+static int udp_to_device_fd = -1;
+static struct sockaddr_in udp_to_host_addr;
+static struct sockaddr_in udp_to_device_addr;
+static char udp_thread_running = 0;
+
+static int init_udp_broadcast_socket(int* fd, struct sockaddr_in* addr, uint16_t port) {
+  *fd = socket(AF_INET, SOCK_DGRAM, 0);
+  if (*fd < 0) return -1;
+
+  int broadcast = 1;
+  if (setsockopt(*fd, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) < 0) return -1;
+  if (setsockopt(*fd, SOL_SOCKET, SO_REUSEADDR, &broadcast, sizeof(broadcast)) < 0) return -1;
+
+  (*addr).sin_family = AF_INET;
+  (*addr).sin_port = htons(port);
+  (*addr).sin_addr.s_addr = htonl(INADDR_BROADCAST);
+
+  if (bind(*fd, (struct sockaddr*)addr, sizeof(*addr)) < 0) return -1;
+
+  return 0;
+}
+
+static void* udp_thread_func(void* arg) {
+  udp_thread_running = 1;
+
+  if (init_udp_broadcast_socket(&udp_to_host_fd, &udp_to_host_addr, UDP_TO_HOST_PORT)) return NULL;
+  if (init_udp_broadcast_socket(&udp_to_device_fd, &udp_to_device_addr, UDP_TO_DEVICE_PORT)) return NULL;
+
+  int addr_len = sizeof(struct sockaddr_in);
+
+  uint8_t buffer[128];
+  int read_size;
+
+  printf("Ah\n");
+
+  while (1) {
+    read_size = recv(udp_to_host_fd, buffer, 128, 0);
+    sendto(udp_to_device_fd, buffer, read_size, 0, (struct sockaddr*)&udp_to_device_addr, addr_len);
+    printf("Received %d\n", read_size);
+  }
+}
+
+static void init_networking() { pthread_create(&udp_thread, NULL, udp_thread_func, NULL); }
+
 #define ANSI_RESET "\x1B[0m"
 #define ANSI_BLACK_ON_GREY "\x1B[30;47;27m"
 #define ANSI_WHITE "\x1B[27m"
@@ -458,7 +507,7 @@ static void show_secret_QRcode() {
   QRcode* qrcode = QRcode_encodeData(buf_size, (uint8_t*)&qr_buffer, 0, QR_ECLEVEL_L);
 
 #define PRINT_BORDER(c)                         \
-  printf(ANSI_BLACK_ON_GREY);                     \
+  printf(ANSI_BLACK_ON_GREY);                   \
   for (int i = 0; i < qrcode->width + 4; i++) { \
     printf(c);                                  \
   }                                             \
@@ -508,7 +557,7 @@ static void show_secret_QRcode() {
     // Unfortunately, many terminal emulators do not display these
     // Unicode characters properly.
     PRINT_BORDER(" ");
-  
+
     for (int y = 0; y < qrcode->width; y += 2) {
       printf(ANSI_BLACK_ON_GREY "  ");
       for (int x = 0; x < qrcode->width; ++x) {
@@ -525,7 +574,7 @@ static void show_secret_QRcode() {
       }
       puts("  " ANSI_RESET);
     }
-  
+
     PRINT_BORDER(" ");
   } else {
     // TODO

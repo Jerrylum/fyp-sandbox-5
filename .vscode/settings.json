@@ -24,6 +24,8 @@
         "pthread.h": "c",
         "stdarg.h": "c",
         "essentials.h": "c",
-        "qrencode.h": "c"
+        "qrencode.h": "c",
+        "inet.h": "c",
+        "pam_appl.h": "c"
     }
 }

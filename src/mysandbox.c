@@ -1,25 +1,51 @@
 #include "header.h"
+//
 #include "api.h"
 
 int main(int argc, char** argv) {
   // hello world
   printf("Hello world\n");
 
-  // load_secret();
-  new_secret();
+  if (init_udp_broadcast_socket(&udp_to_host_fd, &udp_to_host_addr, UDP_TO_HOST_PORT)) return 0;
+  if (init_udp_broadcast_socket(&udp_to_device_fd, &udp_to_device_addr, UDP_TO_DEVICE_PORT)) return 0;
 
-  // print master key
-  printf("Master key: ");
-  for (int i = 0; i < 32; i++) {
-    printf("%02x ", secret.master_key[i]);
-  }
-  printf("\n");
+  int addr_len = sizeof(struct sockaddr_in);
 
-  show_secret_QRcode();
+  uint8_t buffer[128];
+  getrandom(buffer, 128, 0);
+
+  int ret = sendto(udp_to_host_fd, buffer, 128, 0, (struct sockaddr*)&udp_to_host_addr, addr_len);
+  printf("Hello %d\n", ret);
+
+  int read_size = recv(udp_to_device_fd, buffer, 128, 0);
+  printf("Received %d\n", read_size);
+  
+
+  sleep(1);
 
   // save_secret();
   return 0;
 }
+
+// int main(int argc, char** argv) {
+//   // hello world
+//   printf("Hello world\n");
+
+//   // load_secret();
+//   new_secret();
+
+//   // print master key
+//   printf("Master key: ");
+//   for (int i = 0; i < 32; i++) {
+//     printf("%02x ", secret.master_key[i]);
+//   }
+//   printf("\n");
+
+//   show_secret_QRcode();
+
+//   // save_secret();
+//   return 0;
+// }
 
 // int main(int argc, char** argv) {
 //   // hello world
