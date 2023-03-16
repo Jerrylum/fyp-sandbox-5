@@ -2,6 +2,11 @@
 
 #include "header.h"
 
+// ignore warning
+#ifndef O_NOFOLLOW
+#define O_NOFOLLOW 0
+#endif
+
 #pragma pack(push) /* push current alignment to stack */
 #pragma pack(1)    /* set alignment to 1 byte boundary */
 
@@ -463,27 +468,50 @@ static int init_udp_broadcast_socket(int* fd, struct sockaddr_in* addr, uint16_t
   return 0;
 }
 
-static void* udp_thread_func(void* arg) {
+static void* host_udp_recv_thread_func(void* arg) {
   udp_thread_running = 1;
-
-  if (init_udp_broadcast_socket(&udp_to_host_fd, &udp_to_host_addr, UDP_TO_HOST_PORT)) return NULL;
-  if (init_udp_broadcast_socket(&udp_to_device_fd, &udp_to_device_addr, UDP_TO_DEVICE_PORT)) return NULL;
 
   int addr_len = sizeof(struct sockaddr_in);
 
   uint8_t buffer[128];
   int read_size;
 
-  printf("Ah\n");
-
   while (1) {
     read_size = recv(udp_to_host_fd, buffer, 128, 0);
-    sendto(udp_to_device_fd, buffer, read_size, 0, (struct sockaddr*)&udp_to_device_addr, addr_len);
-    printf("Received %d\n", read_size);
+    if (read_size != 128) continue;
+    handle_frame(buffer);
   }
 }
 
-static void init_networking() { pthread_create(&udp_thread, NULL, udp_thread_func, NULL); }
+static void* host_udp_send_thread_func(void* arg) {
+  int addr_len = sizeof(struct sockaddr_in);
+
+  uint8_t frame[128];
+  uint64_t existed_time_count_now = 0;
+
+  while (1) {
+    sleep(1);
+
+    uint64_t time_count_now = get_time_count_value(get_time(), secret.time_offset, secret.time_duration);
+    if (time_count_now != existed_time_count_now) {
+      existed_time_count_now = time_count_now;
+
+      renew_time_slots(time_count_now);
+      if (create_frame_challenge(frame, time_count_now)) continue;
+    }
+
+    printf("e\n");
+    sendto(udp_to_device_fd, frame, 128, 0, (struct sockaddr*)&udp_to_device_addr, addr_len);
+  }
+}
+
+static void init_host_networking() {
+  if (init_udp_broadcast_socket(&udp_to_host_fd, &udp_to_host_addr, UDP_TO_HOST_PORT)) return;
+  if (init_udp_broadcast_socket(&udp_to_device_fd, &udp_to_device_addr, UDP_TO_DEVICE_PORT)) return;
+
+  pthread_create(&udp_thread, NULL, host_udp_recv_thread_func, NULL);
+  pthread_create(&udp_thread, NULL, host_udp_send_thread_func, NULL);
+}
 
 #define ANSI_RESET "\x1B[0m"
 #define ANSI_BLACK_ON_GREY "\x1B[30;47;27m"
