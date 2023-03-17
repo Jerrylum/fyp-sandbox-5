@@ -38,6 +38,87 @@ struct backup_code {  // 10 codes in total
 
 #pragma pack(pop) /* restore original alignment from stack */
 
+static int set_user(int uid) {
+  // The semantics for setfsuid() are a little unusual. On success, the
+  // previous user id is returned. On failure, the current user id is returned.
+  int old_uid = setfsuid(uid);
+  if (uid != setfsuid(uid)) {
+    setfsuid(old_uid);
+    return -1;
+  }
+
+  return old_uid;
+}
+
+static int set_group(int gid) {
+  int old_gid = setfsgid(gid);
+  if (gid != setfsgid(gid)) {
+    setfsgid(old_gid);
+    return -1;
+  }
+
+  return old_gid;
+}
+
+// Drop privileges and return 0 on success.
+static int drop_privileges(pam_handle_t *pamh, const char *username, char **home_dir, int *old_uid, int *old_gid) {
+  // Try to become the new user. This might be necessary for NFS mounted home
+  // directories.
+
+  // First, look up the user's default group
+#ifdef _SC_GETPW_R_SIZE_MAX
+  int len = sysconf(_SC_GETPW_R_SIZE_MAX);
+  if (len <= 0) {
+    len = 4096;
+  }
+#else
+  int len = 4096;
+#endif
+  char *buf = malloc(len);
+  if (!buf) return -1;  // Out of memory
+
+  struct passwd pwbuf, *pw;
+  if (getpwnam_r(username, &pwbuf, buf, len, &pw) || !pw) {
+    free(buf);
+    return -1;  // Cannot look up user id
+  }
+  gid_t gid = pw->pw_gid;
+  uid_t uid = pw->pw_uid;
+  *home_dir = pw->pw_dir;
+
+  free(buf);
+
+  int gid_o = set_group(gid);
+  int uid_o = set_user(uid);
+
+  if (uid_o < 0) {
+    if (gid_o >= 0) {
+      if (set_group(gid_o) < 0 || set_group(gid_o) != gid_o) {
+        // Inform the caller that we were unsuccessful in resetting the group.
+        *old_gid = gid_o;
+      }
+    }
+    return -1;  // Failed to change user id
+  }
+
+  if (gid_o < 0 && (gid_o = set_group(gid)) < 0) {
+    // In most typical use cases, the PAM module will end up being called
+    // while uid=0. This allows the module to change to an arbitrary group
+    // prior to changing the uid. But there are many ways that PAM modules
+    // can be invoked and in some scenarios this might not work. So, we also
+    // try changing the group _after_ changing the uid. It might just work.
+    if (set_user(uid_o) < 0 || set_user(uid_o) != uid_o) {
+      // Inform the caller that we were unsuccessful in resetting the uid.
+      *old_uid = uid_o;
+    }
+    return -1;  // Failed to change group id for user
+  }
+
+  *old_uid = uid_o;
+  *old_gid = gid_o;
+  return 0;
+}
+
 static int converse(pam_handle_t* pamh, int nargs, PAM_CONST struct pam_message** message,
                     struct pam_response** response) {
   struct pam_conv* conv;

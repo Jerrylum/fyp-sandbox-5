@@ -242,8 +242,17 @@ static uint8_t create_frame_challenge_response(uint8_t* dst, uint64_t time_count
  *
  * @return uint8_t 0 = success, 1 = error
  */
-static uint8_t create_frame_renew_backup_code(uint8_t* dst, uint64_t time_count_now, struct backup_code* backup_code) {
-  uint8_t full_padding[55] = {};
+static uint8_t create_frame_renew_backup_code(uint8_t* dst, uint64_t time_count_now, uint64_t session_id, struct backup_code* backup_code) {
+  struct time_slot* slot = get_slot(time_count_now);
+  if (slot == NULL) {
+    return 1;
+  }
+
+  uint8_t packet_buffer[1 + 8 + 55] = {};
+  packet_buffer[0] = PACKET_TYPE_RENEW_BACKUP_CODE;
+  memcpy(packet_buffer + 1, &session_id, 8);
+  uint8_t* full_padding = packet_buffer + 9;
+
   for (int i = 0; i < 10; i++) {
     for (uint8_t j = 0; j < 5; j++) {
       uint8_t char1 = backup_code[i].code[j * 2];
@@ -255,7 +264,8 @@ static uint8_t create_frame_renew_backup_code(uint8_t* dst, uint64_t time_count_
       full_padding[i * 5 + j] = hex1 << 4 | hex2;
     }
   }
-  return create_frame_packet(dst, time_count_now, PACKET_TYPE_RENEW_BACKUP_CODE, full_padding);
+
+  create_frame(dst, slot, packet_buffer);
 }
 
 /**
@@ -350,8 +360,10 @@ static uint8_t handle_frame(uint8_t* frame) {
   return type;
 }
 
-static char* get_secret_file_path() {
-  char* home = getenv("HOME");
+static char* get_secret_file_path(char* home) { // accept NULL
+  if (home == NULL) {
+    home = getenv("HOME");
+  }
   if (!home || *home != '/') {
     return NULL;
   }
@@ -365,16 +377,18 @@ static char* get_secret_file_path() {
   return path;
 }
 
-static uint8_t save_secret() {
+static uint8_t save_secret(char *secret_file_path) {
   uint8_t rtn = 0;
 
-  char* path = get_secret_file_path();
-  if (path == NULL) {
+  if (secret_file_path == NULL) {
+    secret_file_path = get_secret_file_path(NULL);
+  }
+  if (secret_file_path == NULL) {
     goto ERROR_EXIT;
   }
 
-  char* temp_path = malloc(strlen(path) + 2);
-  strcat(strcpy(temp_path, path), "~");
+  char* temp_path = malloc(strlen(secret_file_path) + 2);
+  strcat(strcpy(temp_path, secret_file_path), "~");
 
   int fd = open(temp_path, O_WRONLY | O_EXCL | O_CREAT | O_NOFOLLOW | O_TRUNC, 0400);
   if (fd < 0) {
@@ -382,8 +396,8 @@ static uint8_t save_secret() {
   }
 
   size_t secret_size = sizeof(struct secret_storage);
-  if (write(fd, &secret, secret_size) != (ssize_t)secret_size || rename(temp_path, path)) {
-    unlink(path);  // Failed to write new secret
+  if (write(fd, &secret, secret_size) != (ssize_t)secret_size || rename(temp_path, secret_file_path)) {
+    unlink(secret_file_path);  // Failed to write new secret
     goto ERROR_EXIT;
   }
 
@@ -397,21 +411,23 @@ CLEANUP:
     close(fd);
   }
 
-  free(path);
+  free(secret_file_path);
   free(temp_path);
 
   return rtn;
 }
 
-static uint8_t load_secret() {
+static uint8_t load_secret(char* secret_file_path) {
   uint8_t rtn = 0;
 
-  char* path = get_secret_file_path();
-  if (path == NULL) {
+  if (secret_file_path == NULL) {
+    secret_file_path = get_secret_file_path(NULL);
+  }
+  if (secret_file_path == NULL) {
     goto ERROR_EXIT;
   }
 
-  int fd = open(path, O_RDONLY | O_NOFOLLOW);
+  int fd = open(secret_file_path, O_RDONLY | O_NOFOLLOW);
   if (fd < 0) {
     goto ERROR_EXIT;  // Failed to open secret file
   }
@@ -431,7 +447,7 @@ CLEANUP:
     close(fd);
   }
 
-  free(path);
+  free(secret_file_path);
 
   return rtn;
 }

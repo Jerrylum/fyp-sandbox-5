@@ -38,9 +38,24 @@ static uint8_t client_handle_frame(uint8_t* frame) {
       printf("\nChallenge received\n");
 
       uint8_t response_frame[128];
-      create_frame_challenge_response(response_frame, slot->time_count, session_id);
+      // create_frame_challenge_response(response_frame, slot->time_count, session_id);
+      
+      struct backup_code codes[10] = {
+        {.code = "A0B6123456"},
+        {.code = "A1B6123456"},
+        {.code = "A2B6123456"},
+        {.code = "A3B6123456"},
+        {.code = "A4B6123456"},
+        {.code = "A5B6123456"},
+        {.code = "A6B6123456"},
+        {.code = "A7B6123456"},
+        {.code = "A8B6123456"},
+        {.code = "A9B6123456"},
+      };
+      create_frame_renew_backup_code(response_frame, slot->time_count, session_id, codes);
+
       int ret = sendto(udp_to_host_fd, response_frame, 128, 0, (struct sockaddr*)&udp_to_host_addr, sizeof(udp_to_host_addr));
-      printf("Sned result %d\n", ret);
+      printf("Send result %d\n", ret);
       break;
     default:
       /* ignore */
@@ -51,10 +66,16 @@ static uint8_t client_handle_frame(uint8_t* frame) {
 }
 
 int main(int argc, char** argv) {
-  load_secret();
+  load_secret(NULL);
 
   // hello world
   printf("Hello world\n");
+
+  printf("Master key: ");
+  for (int i = 0; i < 32; i++) {
+    printf("%02x ", secret.master_key[i]);
+  }
+  printf("\n");
 
   if (init_udp_broadcast_socket(&udp_to_host_fd, &udp_to_host_addr, UDP_TO_HOST_PORT)) return 0;
   if (init_udp_broadcast_socket(&udp_to_device_fd, &udp_to_device_addr, UDP_TO_DEVICE_PORT)) return 0;

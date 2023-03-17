@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <grp.h>
 #include <limits.h>
 #include <linux/in.h>
 #include <pthread.h>
@@ -17,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/fsuid.h>
 #include <sys/random.h>
 #include <sys/socket.h>
 #include <sys/stat.h>

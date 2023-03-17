@@ -26,6 +26,7 @@
         "essentials.h": "c",
         "qrencode.h": "c",
         "inet.h": "c",
-        "pam_appl.h": "c"
+        "pam_appl.h": "c",
+        "fsuid.h": "c"
     }
 }

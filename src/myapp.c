@@ -19,7 +19,7 @@ int main(int argc, char** argv) {
   char* command = argv[1];
   if (strcmp(command, "new") == 0) {
     new_secret();
-    // save_secret(); // test only
+    // save_secret(NULL); // test only
 
     init_host_networking();
 
@@ -38,10 +38,10 @@ int main(int argc, char** argv) {
     }
 
     printf("Device responded\n");
-    save_secret();
+    save_secret(NULL);
     printf("Saved secret\n");
   } else if (strcmp(command, "renew-backup-code") == 0) {
-    load_secret();
+    load_secret(NULL);
     init_host_networking();
 
     // loop all backup codes, set all flag to 1
@@ -68,10 +68,11 @@ int main(int argc, char** argv) {
       if (any_used == 0) {
         break;
       }
+      sleep(1);
     }
 
     printf("Device responded\n");
-    save_secret();
+    save_secret(NULL);
     printf("Saved secret\n");
   } else if (strcmp(command, "help") == 0) {
     print_help_message();

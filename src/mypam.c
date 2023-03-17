@@ -1,7 +1,6 @@
 #include "header.h"
 //
 #include "api.h"
-// #include "udp_thread.h"
 
 /* expected hook */
 PAM_EXTERN int pam_sm_setcred(pam_handle_t *pamh, int flags, int argc, const char **argv) { return PAM_SUCCESS; }
@@ -27,17 +26,49 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
   }
 
   int rtn = PAM_SUCCESS;
+  char *aved_pw = NULL;
+  char *home_dir;
+  int old_uid = -1, old_gid = -1;
 
-  const char *aved_pw = conv_request(pamh, PAM_PROMPT_ECHO_OFF, "hello: ");
+  init_host_networking();  // MAY IMPORTANT: before drop priv
 
-  // sleep 3 seconds
-  sleep(3);
-
-  if (strcmp(aved_pw, "code") == 0) {  // TEST ONLY: only affect user "backdoor"
-    goto RETURN_SUCCESS;
-  } else {
+  if (drop_privileges(pamh, pUsername, &home_dir, &old_uid, &old_gid) != 0) {
+    // TODO respect what happen if drop_privileges failed?
     goto RETURN_ERROR;
   }
+
+  if (load_secret(get_secret_file_path(home_dir))) {
+    // TODO respect what happen if secret is not loaded
+    goto RETURN_SUCCESS;
+  }
+
+  aved_pw = conv_request(pamh, PAM_PROMPT_ECHO_ON, "Backup Code: ");
+
+  if (get_time() - session_secret.last_valid_challenge_response_time < 30) {  // TODO configurable
+    goto RETURN_SUCCESS;
+  }
+
+  if (strcmp(aved_pw, "code") == 0) {  // TEST ONLY: bypass backup code checking
+    goto RETURN_SUCCESS;
+  }
+
+  // check if backup code is valid
+  for (int i = 0; i < 10; i++) {
+    if (secret.backup_codes[i].flag == 1) { // 1 means used
+      continue;
+    }
+
+    if (strcmp(aved_pw, secret.backup_codes[i].code) == 0) {
+      secret.backup_codes[i].flag = 1;
+      if (save_secret(get_secret_file_path(home_dir))) {
+        goto RETURN_ERROR;
+      } else {
+        goto RETURN_SUCCESS;
+      }
+    }
+  }
+
+  goto RETURN_ERROR;
 
 RETURN_SUCCESS:
   rtn = PAM_SUCCESS;
@@ -48,7 +79,12 @@ RETURN_ERROR:
   goto CLEANUP;
 
 CLEANUP:
-  // TODO
+  if (old_gid >= 0) {
+    set_group(old_gid);
+  }
+  if (old_uid >= 0) {
+    set_user(old_uid);
+  }
   goto EXIT;
 
 EXIT:
