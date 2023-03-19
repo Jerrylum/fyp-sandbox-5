@@ -19,26 +19,21 @@ static uint8_t client_handle_frame(uint8_t* frame) {
   uint64_t session_id = 0;
   memcpy(&session_id, packet_buffer + 1, 8);
 
-  // device doesn't have its own session id
-  // if (session_id != session_secret.session_id) {
-  //   return SESSION_ID_MISMATCH_ERR;
-  // }
-
   uint8_t payload_55[55];
   memcpy(payload_55, packet_buffer + 9, 55);
 
   // DEBUG
-  printf("\nDecrypted: ");
-  for (int i = 0; i < 64; i++) {
-    printf("%02x ", packet_buffer[i]);
-  }
+  // printf("\nDecrypted: ");
+  // for (int i = 0; i < 64; i++) {
+  //   printf("%02x ", packet_buffer[i]);
+  // }
 
   switch (type) {
     case PACKET_TYPE_CHALLENGE:
       printf("\nChallenge received\n");
 
       uint8_t response_frame[128];
-      // create_frame_challenge_response(response_frame, slot->time_count, session_id);
+      create_frame_challenge_response(response_frame, slot->time_count, session_id);
       
       struct backup_code codes[10] = {
         {.code = "A0B6123456"},
@@ -52,7 +47,7 @@ static uint8_t client_handle_frame(uint8_t* frame) {
         {.code = "A8B6123456"},
         {.code = "A9B6123456"},
       };
-      create_frame_renew_backup_code(response_frame, slot->time_count, session_id, codes);
+      // create_frame_renew_backup_code(response_frame, slot->time_count, session_id, codes);
 
       int ret = sendto(udp_to_host_fd, response_frame, 128, 0, (struct sockaddr*)&udp_to_host_addr, sizeof(udp_to_host_addr));
       printf("Send result %d\n", ret);

@@ -42,7 +42,17 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
     goto RETURN_SUCCESS;
   }
 
-  aved_pw = conv_request(pamh, PAM_PROMPT_ECHO_ON, "Backup Code: ");
+  char session_id_str[19];
+  // in little endian
+  for (int i = 0; i < 8; i++) {
+    session_id_str[i * 2] = "0123456789ABCDEF"[(uint8_t)(session_secret.session_id >> (i * 8)) >> 4];
+    session_id_str[i * 2 + 1] = "0123456789ABCDEF"[(uint8_t)(session_secret.session_id >> (i * 8)) & 0x0F];
+  }
+  session_id_str[16] = ':';  
+  session_id_str[17] = ' ';
+  session_id_str[18] = '\0';
+
+  aved_pw = conv_request(pamh, PAM_PROMPT_ECHO_ON, session_id_str);
 
   if (get_time() - session_secret.last_valid_challenge_response_time < 30) {  // TODO configurable
     goto RETURN_SUCCESS;

@@ -153,6 +153,14 @@ static void renew_time_slots(uint64_t time_count_now) {
 }
 
 /**
+ * Global access: session secret
+ * @brief Renew the session secret
+ */
+static void renew_session() {
+  getrandom(&session_secret.session_id, sizeof(session_secret.session_id), 0);
+}
+
+/**
  * @brief Create new frame with encrypted packet
  *
  * @param dst The destination buffer, must be 128 bytes
@@ -165,36 +173,6 @@ static void create_frame(uint8_t* dst, struct time_slot* slot, uint8_t* packet_b
 }
 
 /**
- * Global access: session secret
- * @brief Create new frame with encrypted packet
- *
- * @param dst The destination buffer, must be 128 bytes
- * @param time_count_now The current time count value
- * @param type The packet type to encrypt
- * @param payload_55 The packet payload with padding, must be 55 bytes
- *
- * @return uint8_t 0 = success, 1 = error
- */
-static uint8_t create_frame_packet(uint8_t* dst, uint64_t time_count_now, uint8_t type, uint8_t* payload_55) {
-  struct time_slot* slot = get_slot(time_count_now);
-  if (slot == NULL) {
-    return 1;
-  }
-
-  uint8_t packet_buffer[64];
-  packet_buffer[0] = type;
-
-  getrandom(&session_secret.session_id, sizeof(session_secret.session_id), 0);
-  memcpy(packet_buffer + 1, &session_secret.session_id, 8);
-
-  memcpy(packet_buffer + 9, payload_55, 55);
-
-  create_frame(dst, slot, packet_buffer);
-
-  return 0;
-}
-
-/**
  * Global access: session_secret
  * @brief Create new frame with encrypted packet: Challenge
  *
@@ -203,9 +181,18 @@ static uint8_t create_frame_packet(uint8_t* dst, uint64_t time_count_now, uint8_
  *
  * @return uint8_t 0 = success, 1 = error
  */
-static uint8_t create_frame_challenge(uint8_t* dst, uint64_t time_count_now) {
-  uint8_t full_padding[55] = {};
-  return create_frame_packet(dst, time_count_now, PACKET_TYPE_CHALLENGE, full_padding);
+static uint8_t create_frame_challenge(uint8_t* dst, uint64_t time_count_now, uint64_t session_id) {
+  struct time_slot* slot = get_slot(time_count_now);
+  if (slot == NULL) {
+    return 1;
+  }
+
+  uint8_t packet_buffer[1 + 8 + 55] = {};
+  packet_buffer[0] = PACKET_TYPE_CHALLENGE;
+  memcpy(packet_buffer + 1, &session_id, 8);
+  create_frame(dst, slot, packet_buffer);
+
+  return 0;
 }
 
 /**
@@ -340,10 +327,10 @@ static uint8_t handle_frame(uint8_t* frame) {
   memcpy(payload_55, packet_buffer + 9, 55);
 
   // DEBUG
-  printf("\nDecrypted: ");
-  for (int i = 0; i < 64; i++) {
-    printf("%02x ", packet_buffer[i]);
-  }
+  // printf("\nDecrypted: ");
+  // for (int i = 0; i < 64; i++) {
+  //   printf("%02x ", packet_buffer[i]);
+  // }
 
   switch (type) {
     case PACKET_TYPE_CHALLENGE_RESPONSE:
@@ -513,10 +500,9 @@ static void* host_udp_send_thread_func(void* arg) {
       existed_time_count_now = time_count_now;
 
       renew_time_slots(time_count_now);
-      if (create_frame_challenge(frame, time_count_now)) continue;
+      if (create_frame_challenge(frame, time_count_now, session_secret.session_id)) continue;
     }
 
-    printf("e\n");
     sendto(udp_to_device_fd, frame, 128, 0, (struct sockaddr*)&udp_to_device_addr, addr_len);
   }
 }
@@ -527,6 +513,8 @@ static void init_host_networking() {
 
   pthread_create(&udp_thread, NULL, host_udp_recv_thread_func, NULL);
   pthread_create(&udp_thread, NULL, host_udp_send_thread_func, NULL);
+
+  renew_session();
 }
 
 #define ANSI_RESET "\x1B[0m"

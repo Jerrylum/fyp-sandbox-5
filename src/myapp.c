@@ -25,33 +25,25 @@ int main(int argc, char** argv) {
 
     show_secret_QRcode();
 
-    printf("Master key: ");
-    for (int i = 0; i < 32; i++) {
-      printf("%02x ", secret.master_key[i]);
-    }
-
-    printf("\nWaiting for device to response\n");
-
-    while (session_secret.last_valid_challenge_response_time == 0) {
-      // wait for device to response
-      sleep(1);
-    }
-
-    printf("Device responded\n");
-    save_secret(NULL);
-    printf("Saved secret\n");
+    goto WAIT_FOR_BACKUP_CODE;
   } else if (strcmp(command, "renew-backup-code") == 0) {
-    load_secret(NULL);
+    if (load_secret(NULL) != 0) {
+      printf("No secret found\n");
+      return 1;
+    }
     init_host_networking();
+
+WAIT_FOR_BACKUP_CODE:
 
     // loop all backup codes, set all flag to 1
     for (int i = 0; i < 10; i++) {
       secret.backup_codes[i].flag = 1;
     }
 
-    printf("Master key: ");
-    for (int i = 0; i < 32; i++) {
-      printf("%02x ", secret.master_key[i]);
+    printf("Session ID: ");
+    uint64_t session_id = session_secret.session_id;
+    for (int i = 0; i < 8; i++) {
+      printf("%02X ", (uint8_t)(session_id >> (i * 8)));
     }
 
     printf("\nWaiting for device to response\n");
@@ -74,6 +66,12 @@ int main(int argc, char** argv) {
     printf("Device responded\n");
     save_secret(NULL);
     printf("Saved secret\n");
+
+    // print all backup codes
+    printf("Backup codes:\n");
+    for (int i = 0; i < 10; i++) {
+      printf("%s\n", secret.backup_codes[i].code);
+    }
   } else if (strcmp(command, "help") == 0) {
     print_help_message();
   } else {
