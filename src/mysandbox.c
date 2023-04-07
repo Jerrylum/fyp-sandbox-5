@@ -2,6 +2,8 @@
 //
 #include "api.h"
 
+int client_tcp_fd;
+
 static uint8_t client_handle_frame(uint8_t* frame) {
   struct time_slot* slot = find_slot_by_frame_header(frame);
   if (slot == NULL) {
@@ -50,7 +52,14 @@ static uint8_t client_handle_frame(uint8_t* frame) {
       // create_frame_renew_backup_code(response_frame, slot->time_count, session_id, codes);
 
       int ret = sendto(udp_to_host_fd, response_frame, 128, 0, (struct sockaddr*)&udp_to_host_addr, sizeof(udp_to_host_addr));
-      printf("Send result %d\n", ret);
+      // int ret = 0;
+
+      uint8_t tcp_response_frame[129];
+      tcp_response_frame[0] = 0x00; // send
+      memcpy(tcp_response_frame + 1, response_frame, 128);
+      int ret2 = send(client_tcp_fd, tcp_response_frame, 129, 0);
+      
+      printf("Challenge response sent %d %d\n", ret, ret2);
       break;
     default:
       /* ignore */
@@ -72,24 +81,116 @@ int main(int argc, char** argv) {
   }
   printf("\n");
 
-  if (init_udp_broadcast_socket(&udp_to_host_fd, &udp_to_host_addr, UDP_TO_HOST_PORT)) return 0;
-  if (init_udp_broadcast_socket(&udp_to_device_fd, &udp_to_device_addr, UDP_TO_DEVICE_PORT)) return 0;
+  init_host_networking();
 
-  uint8_t buffer[128];
-  int read_size;
+  sleep(3);
+
+  printf("Client listening\n");
+
+  const int port = 25000;
+
+  uint8_t* message = malloc(1 + secret.minimum_slots * 32);
+
+BEGIN:
+  sleep(1);
+
+  printf("Connecting to exchange server...\n");
+
+  struct hostent* host = gethostbyname("0.0.0.0");
+
+  struct sockaddr_in sendSockAddr;
+  bzero((char*)&sendSockAddr, sizeof(sendSockAddr));
+  sendSockAddr.sin_family = AF_INET;
+  sendSockAddr.sin_addr.s_addr = inet_addr(inet_ntoa(*(struct in_addr*)*host->h_addr_list));
+  sendSockAddr.sin_port = htons(port);
+
+  client_tcp_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+  int status = connect(client_tcp_fd, (struct sockaddr*)&sendSockAddr, sizeof(sendSockAddr));
+  if (status < 0) goto BEGIN;
+
+  printf("Connected to exchange server\n");
+
+  struct timeval tv;
+  tv.tv_sec = 1;
+  tv.tv_usec = 0;
+  setsockopt(client_tcp_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+
+  uint64_t existed_time_count_now = 0;
 
   while (1) {
-    read_size = recv(udp_to_device_fd, buffer, 128, 0);
-    if (read_size != 128) continue;
-
     uint64_t time_count_now = get_time_count_value(get_time(), secret.time_offset, secret.time_duration);
-    renew_time_slots(time_count_now);
-  
-    client_handle_frame(buffer);
+    if (time_count_now != existed_time_count_now) {
+      existed_time_count_now = time_count_now;
+
+      renew_time_slots(time_count_now);
+
+      message[0] = 0x01; // listen 32 bytes header
+
+      struct time_slot* slot = session_secret.slots;
+      int i = 0;
+      while (slot != NULL) {
+        memcpy(message + 1 + i * 32, slot->frame_header, 32);
+        slot = slot->next;
+        i++;
+      }
+
+      send(client_tcp_fd, message, 1 + secret.minimum_slots * 32, 0);
+    }
+
+    uint8_t buffer[128];
+    int read_size = recv(client_tcp_fd, buffer, 128, 0);
+    if (read_size == 128) {
+      client_handle_frame(buffer);
+    } else if (read_size == 0) {
+      goto CLOSE;
+    } else if (read_size < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // ignore
+      } else {
+        goto CLOSE;
+      }
+    }
   }
+
+CLOSE:
+  printf("Closing connection to exchange server...\n");
+  close(client_tcp_fd);
+  goto BEGIN;
 
   return 0;
 }
+
+// int main(int argc, char** argv) {
+//   load_secret(NULL);
+
+//   // hello world
+//   printf("Hello world\n");
+
+//   printf("Master key: ");
+//   for (int i = 0; i < 32; i++) {
+//     printf("%02x ", secret.master_key[i]);
+//   }
+//   printf("\n");
+
+//   if (init_udp_broadcast_socket(&udp_to_host_fd, &udp_to_host_addr, UDP_TO_HOST_PORT)) return 0;
+//   if (init_udp_broadcast_socket(&udp_to_device_fd, &udp_to_device_addr, UDP_TO_DEVICE_PORT)) return 0;
+
+//   uint8_t buffer[128];
+//   int read_size;
+
+//   while (1) {
+//     read_size = recv(udp_to_device_fd, buffer, 128, 0);
+//     if (read_size != 128) continue;
+
+//     uint64_t time_count_now = get_time_count_value(get_time(), secret.time_offset, secret.time_duration);
+//     renew_time_slots(time_count_now);
+  
+//     client_handle_frame(buffer);
+//   }
+
+//   return 0;
+// }
 
 // int main(int argc, char** argv) {
 //   // hello world

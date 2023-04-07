@@ -27,6 +27,9 @@
         "qrencode.h": "c",
         "inet.h": "c",
         "pam_appl.h": "c",
-        "fsuid.h": "c"
+        "fsuid.h": "c",
+        "sockaddr.h": "c",
+        "stat.h": "c",
+        "types.h": "c"
     }
 }

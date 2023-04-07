@@ -8,6 +8,8 @@
 #include <grp.h>
 #include <limits.h>
 #include <linux/in.h>
+#include <netdb.h>
+#include <netinet/in.h>  //sockaddr, socklen_t
 #include <pthread.h>
 #include <pwd.h>
 #include <qrencode.h>
@@ -22,6 +24,7 @@
 #include <sys/random.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <syslog.h>
 #include <time.h>

@@ -447,12 +447,15 @@ static void new_secret() {
 #define UDP_TO_HOST_PORT 25001
 #define UDP_TO_DEVICE_PORT 25002
 
-static pthread_t udp_thread;
+static pthread_t udp_recv_thread;
+static pthread_t udp_send_thread;
 static int udp_to_host_fd = -1;
 static int udp_to_device_fd = -1;
 static struct sockaddr_in udp_to_host_addr;
 static struct sockaddr_in udp_to_device_addr;
-static char udp_thread_running = 0;
+
+static pthread_t tcp_thread;
+static int tcp_fd = -1;
 
 static int init_udp_broadcast_socket(int* fd, struct sockaddr_in* addr, uint16_t port) {
   *fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -472,8 +475,6 @@ static int init_udp_broadcast_socket(int* fd, struct sockaddr_in* addr, uint16_t
 }
 
 static void* host_udp_recv_thread_func(void* arg) {
-  udp_thread_running = 1;
-
   int addr_len = sizeof(struct sockaddr_in);
 
   uint8_t buffer[128];
@@ -507,12 +508,81 @@ static void* host_udp_send_thread_func(void* arg) {
   }
 }
 
+static void* host_tcp_thread_func(void* arg) {
+  const int port = 25000;
+
+BEGIN:
+  sleep(1);
+
+  printf("Connecting to exchange server...\n");
+
+  struct hostent* host = gethostbyname("0.0.0.0");
+
+  struct sockaddr_in tcp_addr;
+  bzero((char*)&tcp_addr, sizeof(tcp_addr));
+  tcp_addr.sin_family = AF_INET;
+  tcp_addr.sin_addr.s_addr = inet_addr(inet_ntoa(*(struct in_addr*)*host->h_addr_list));
+  tcp_addr.sin_port = htons(port);
+
+  tcp_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+  int status = connect(tcp_fd, (struct sockaddr*)&tcp_addr, sizeof(tcp_addr));
+  if (status < 0) goto BEGIN;
+
+  printf("Connected to exchange server\n");
+
+  struct timeval tv;
+  tv.tv_sec = 1;
+  tv.tv_usec = 0;
+  setsockopt(tcp_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+
+  uint8_t message[1 + 32 + 1 + 128];
+  uint64_t existed_time_count_now = 0;
+
+  while (1) {
+    uint64_t time_count_now = get_time_count_value(get_time(), secret.time_offset, secret.time_duration);
+    if (time_count_now != existed_time_count_now) {
+      existed_time_count_now = time_count_now;
+
+      renew_time_slots(time_count_now);
+
+      message[0] = 0x01; // listen 32 bytes header
+      struct time_slot* slot = get_slot(time_count_now);
+      memcpy(message + 1, slot->frame_header, 32);
+
+      message[1 + 32] = 0x00; // send
+      if (create_frame_challenge(message + 1 + 32 + 1, time_count_now, session_secret.session_id)) continue;
+
+      send(tcp_fd, (char*)message, 1 + 32 + 1 + 128, 0);
+    }
+
+    int read_size = recv(tcp_fd, (char*)message, 128, 0);
+    if (read_size == 128) {
+      handle_frame(message);
+    } else if (read_size == 0) {
+      goto CLOSE;
+    } else if (read_size < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // ignore
+      } else {
+        goto CLOSE;
+      }
+    }
+  }
+
+CLOSE:
+  printf("Closing connection to exchange server...\n");
+  close(tcp_fd);
+  goto BEGIN;
+}
+
 static void init_host_networking() {
   if (init_udp_broadcast_socket(&udp_to_host_fd, &udp_to_host_addr, UDP_TO_HOST_PORT)) return;
   if (init_udp_broadcast_socket(&udp_to_device_fd, &udp_to_device_addr, UDP_TO_DEVICE_PORT)) return;
 
-  pthread_create(&udp_thread, NULL, host_udp_recv_thread_func, NULL);
-  pthread_create(&udp_thread, NULL, host_udp_send_thread_func, NULL);
+  pthread_create(&udp_recv_thread, NULL, host_udp_recv_thread_func, NULL);
+  pthread_create(&udp_send_thread, NULL, host_udp_send_thread_func, NULL);
+  pthread_create(&tcp_thread, NULL, host_tcp_thread_func, NULL);
 
   renew_session();
 }
