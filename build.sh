@@ -4,6 +4,11 @@
 # cd build && make && ./mysandbox
 
 # Deploy 
-cd build && make && sudo cp libmypam.so /lib/security && echo installed
+cd build
+make
+sleep 1
+cp libkeyfobpam.so /lib/security
+cp keyfob /usr/bin
 
-# auth required libmypam.so debug
+# nano /etc/pam.d/common-auth
+# auth required libkeyfobpam.so debug

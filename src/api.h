@@ -268,7 +268,7 @@ static void handle_packet_challenge_response(uint8_t* payload_55) {
   }
 
   session_secret.last_valid_challenge_response_time = get_time();
-  printf("\nReceived valid challenge\n");
+  // printf("\nReceived valid challenge response\n");
 }
 
 /**
@@ -292,7 +292,7 @@ static void handle_packet_renew_backup_code(uint8_t* payload_55) {
     secret.backup_codes[i].flag = 0;
   }
 
-  printf("\nReceived valid renew backup code\n");
+  // printf("\nReceived valid renew backup code response\n");
 }
 
 /**
@@ -325,12 +325,6 @@ static uint8_t handle_frame(uint8_t* frame) {
 
   uint8_t payload_55[55];
   memcpy(payload_55, packet_buffer + 9, 55);
-
-  // DEBUG
-  // printf("\nDecrypted: ");
-  // for (int i = 0; i < 64; i++) {
-  //   printf("%02x ", packet_buffer[i]);
-  // }
 
   switch (type) {
     case PACKET_TYPE_CHALLENGE_RESPONSE:
@@ -514,9 +508,9 @@ static void* host_tcp_thread_func(void* arg) {
 BEGIN:
   sleep(1);
 
-  printf("Connecting to exchange server...\n");
+  // printf("Connecting to exchange server...\n");
 
-  struct hostent* host = gethostbyname("0.0.0.0");
+  struct hostent* host = gethostbyname("keyfob-exchange.jerryio.com");
 
   struct sockaddr_in tcp_addr;
   bzero((char*)&tcp_addr, sizeof(tcp_addr));
@@ -529,7 +523,7 @@ BEGIN:
   int status = connect(tcp_fd, (struct sockaddr*)&tcp_addr, sizeof(tcp_addr));
   if (status < 0) goto BEGIN;
 
-  printf("Connected to exchange server\n");
+  // printf("Connected to exchange server\n");
 
   struct timeval tv;
   tv.tv_sec = 1;
@@ -571,7 +565,7 @@ BEGIN:
   }
 
 CLOSE:
-  printf("Closing connection to exchange server...\n");
+  // printf("Closing connection to exchange server...\n");
   close(tcp_fd);
   goto BEGIN;
 }

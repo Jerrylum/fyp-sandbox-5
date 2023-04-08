@@ -3,7 +3,7 @@
 #include "api.h"
 
 void print_help_message() {
-  printf("Usage: ./myapp [command]\n");
+  printf("Usage: ./keyfob [command]\n");
   printf("Commands:\n");
   printf("  new: create a new secret, session secret, and backup code\n");
   printf("  renew-backup-code: create a new backup code\n");
@@ -12,7 +12,7 @@ void print_help_message() {
 
 int main(int argc, char** argv) {
   if (argc != 2) {
-    printf("Usage: ./myapp [command]\n");
+    printf("Usage: ./keyfob [command]\n");
     return 1;
   }
 
