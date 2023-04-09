@@ -1,8 +1,17 @@
 ## Usage
 
-The build scripts will take care of putting your module where it needs to be, `/lib/security`, so the next thing to do is edit config files.
+Use to install the pam module. The build scripts will take care of putting your module where it needs to be, `/lib/security`, so the next thing to do is edit config files.
+```
+sudo ./build.sh
+```
 
-The config files are located in `/etc/pam.d/` and the one I edited was `/etc/pam.d/common-auth`. At the top of the pam file (or anywhere), put these lines:
+The config files are located in `/etc/pam.d/` and the one I edited was `/etc/pam.d/common-auth`.
+```
+nano /etc/pam.d/common-auth
+```
+
+
+At the top of the pam file (or anywhere), put these lines:
 
 ```
 auth sufficient libkeyfobpam.so
